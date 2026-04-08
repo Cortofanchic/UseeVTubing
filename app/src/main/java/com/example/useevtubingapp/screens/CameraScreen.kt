@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Environment
 import android.util.Log
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -117,6 +118,7 @@ private suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspend
 }
 
 // Вспомогательная функция для конвертации ImageProxy в Bitmap
+@androidx.annotation.OptIn(ExperimentalGetImage::class)
 private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
     val mediaImage: Image? = imageProxy.image
     mediaImage?.let {
@@ -267,7 +269,7 @@ fun CameraScreen(mainActivity: MainActivity) {
             // кнопка для видео
             OutlinedButton(
                 onClick = { },
-                modifier= Modifier.size(200.dp),
+                modifier= Modifier.size(150.dp),
                 contentPadding = PaddingValues(0.dp),
                 border = BorderStroke(0.dp, color=Color(0x00FFFFFF)),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = blueDark7)
@@ -276,7 +278,7 @@ fun CameraScreen(mainActivity: MainActivity) {
                     Icons.Filled.MotionPhotosOn ,
                     contentDescription = "start video button",
                     tint=blueDark7,
-                    modifier = Modifier.size(height=200.dp, width=200.dp)
+                    modifier = Modifier.size(height=150.dp, width=150.dp)
                 )
             }
             //switch для поворота камеры

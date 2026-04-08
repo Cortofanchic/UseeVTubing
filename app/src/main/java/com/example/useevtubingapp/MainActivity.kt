@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    var uiStateSaved: File? = null
+    var uiStateSaved: String? = null
 
     private var lastProcessedTime = 0L
     private val frameProcessingInterval = 500 // ms
@@ -125,8 +125,12 @@ class MainActivity : ComponentActivity() {
         shouldUseMicrophone.value = isGranted
     }
 
-    fun loadAvatar(avatarName: File) {
+    fun loadAvatar(avatarName: String) {
         uiStateSaved = avatarName
+    }
+
+    fun getAvatar(): String? {
+        return uiStateSaved
     }
 
     fun handleImageCapture(uri: Uri) {
@@ -253,51 +257,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-//    fun saveToGallery(bitmap: Bitmap, context: Context) {
-//        val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-//        val appDir = File(picturesDir, R.string.app_name.toString())
-//
-//        if (!appDir.exists()) {
-//            appDir.mkdirs()
-//        }
-//
-//        val file = File(appDir, "${System.currentTimeMillis()}.jpg")
-//        FileOutputStream(file).use { out ->
-//            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-//        }
-//
-//        MediaScannerConnection.scanFile(
-//            context,
-//            arrayOf(file.absolutePath),
-//            arrayOf("image/jpeg"),
-//            null
-//        )
-//    }
-//
-//    fun saveToGallery(file: File, context: Context): String? {
-//        val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-//        val appDir = File(picturesDir, R.string.app_name.toString())
-//
-//        if (!appDir.exists()) {
-//            appDir.mkdirs()
-//        }
-//
-//        val file_new = File(appDir, "Avatar.vrm")
-//
-//        try {
-//            file.copyTo(file_new, overwrite = true)
-//            MediaScannerConnection.scanFile(
-//                context,
-//                arrayOf(file_new.absolutePath),
-//                arrayOf("image/jpeg"),
-//                null
-//            )
-//            return file_new.absolutePath
-//        } catch (e: Exception) {
-//            Log.e("Error", e.toString())
-//            return null
-//        }
-//    }
 
     fun deleteFile(file: File): Boolean {
         if (!file.exists()) {
@@ -482,10 +441,10 @@ class MainActivity : ComponentActivity() {
                     CharacterScreen(mainActivity)
                     isShowBottomBar.value = true
                 }
-                composable(route = "galleryScreen") {
-                    GalleryScreen()
-                    isShowBottomBar.value = true
-                }
+//                composable(route = "galleryScreen") {
+//                    GalleryScreen()
+//                    isShowBottomBar.value = true
+//                }
                 composable(route = "cameraScreen") {
                     CameraScreen(mainActivity)
                     isShowBottomBar.value = true

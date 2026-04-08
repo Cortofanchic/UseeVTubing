@@ -53,7 +53,7 @@ sealed class UIEvent {
 
 data class UIState(
     val isUploading: Boolean = false,
-    val image: File? = null
+    val image: String? = null
 )
 
 
@@ -74,12 +74,13 @@ class UIViewModel : ViewModel() {
     private fun uploadSingleImage(context: Context, uri: Uri, activity: MainActivity) {
         _uiState.update { it.copy(isUploading = true) }
         val file = createFileFromContentUri(context, uri)
-        if (checkToVRM(file)){
-            val file_glb : File? = createFileGLBfromVRM(file, context)
-            file_glb?.let{
+        if (checkToVRM(file)) {
+            val file_glb_path = activity.createFilePath(file.absolutePath)
+            val file_glb = activity.convertVRMtoGLBcpp(file.absolutePath, file_glb_path)
+            if (file_glb != file.absolutePath) {
                 activity.loadAvatar(file_glb)
                 _uiState.update { it.copy(image = file_glb) }
-            } ?: run {
+            } else {
                 Toast.makeText(context, "Ошибка загрузки файла", Toast.LENGTH_LONG).show()
             }
         } else {
@@ -91,7 +92,7 @@ class UIViewModel : ViewModel() {
     fun deleteAvatarData(): Boolean {
         try {
             _uiState.update { it.copy(image = null) }
-             return true
+            return true
         } catch (e: Exception) {
             Log.e("UIViewModel", "Error deleting", e)
             return false
@@ -101,29 +102,9 @@ class UIViewModel : ViewModel() {
     fun updateProgress(progress: Boolean) {
         _uiState.update { it.copy(isUploading = progress) }
     }
-}
 
-fun createFileGLBfromVRM(vrmFile: File, context: Context) : File? {
-    try {
-        //cохранение
-        val appDir = vrmFile.parentFile ?: return null
-
-        // Создаем папку если её нет
-        if (!appDir.exists()) {
-            appDir.mkdirs()
-        }
-
-        val bytes = vrmFile.readBytes()
-        val outputFile = File(appDir, "${vrmFile.nameWithoutExtension}.glb")
-
-
-        // Сохраняем результат
-        FileOutputStream(outputFile).use { it.write(bytes) }
-        return outputFile
-
-    } catch (e: Exception) {
-        Log.e("ERROR_CONVERT_VRM", e.toString())
-        return null
+    fun updateImage(image: String){
+        _uiState.update { it.copy(image = image) }
     }
 }
 
@@ -186,7 +167,6 @@ fun copyStreamToFile(inputStream: InputStream, outputFile: File) {
 fun deleteAvatar(avatar: String, activity: MainActivity) : Boolean{
     try {
         activity.deleteFile(avatar)
-        activity.deleteFile(activity.createFilePath(avatar))
         return true
     } catch (e: Exception){
         return false
@@ -203,6 +183,9 @@ fun CharacterScreen(mainActivity: MainActivity) {
     val viewModel: UIViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
 
+    mainActivity.getAvatar()?.let{
+        viewModel.updateImage(it)
+    }
 
     val singleImagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -225,48 +208,25 @@ fun CharacterScreen(mainActivity: MainActivity) {
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.Top
             ){
-                uiState.image?.let{
-                    if (uiState.image != null){
-                        val renderer = ModelRenderer()
-                        val new_path = mainActivity.createFilePath(uiState.image!!.absolutePath)
-                        val filePath = mainActivity.convertVRMtoGLBcpp(uiState.image!!.absolutePath, new_path)
-
-                        if (filePath != uiState.image!!.absolutePath){
-                            val file = File(filePath)
-                            Surface(
-                                modifier = Modifier.width(400.dp).height(400.dp),
-                                color = MaterialTheme.colorScheme.background
-                            ) {
-                                AndroidView(factory = { context ->
-                                    SurfaceView(context).apply {
-                                        layoutParams = android.view.ViewGroup.LayoutParams(
-                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                        )
-                                        renderer.onSurfaceAvailable(this, mainActivity.lifecycle, file)
-                                        setTag(renderer)
-                                    }
-                                })
-                            }
-                        } else {
-                            Toast.makeText(context, "Ошибка загрузки модели", Toast.LENGTH_LONG).show()
-                            Icon(
-                                Icons.Filled.AccountCircle,
-                                contentDescription = "person avatar icon",
-                                tint=blueDark7,
-                                modifier = Modifier.size(200.dp)
-                            )
+                if (uiState.image != null){
+                    val file = File(uiState.image)
+                    val renderer = ModelRenderer()
+                        Surface(
+                            modifier = Modifier.width(400.dp).height(400.dp),
+                            color = MaterialTheme.colorScheme.background
+                        ) {
+                            AndroidView(factory = { context ->
+                                SurfaceView(context).apply {
+                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                    )
+                                    renderer.onSurfaceAvailable(this, mainActivity.lifecycle, file)
+                                    setTag(renderer)
+                                }
+                            })
                         }
-
-                    } else {
-                        Icon(
-                            Icons.Filled.AccountCircle,
-                            contentDescription = "person avatar icon",
-                            tint=blueDark7,
-                            modifier = Modifier.size(200.dp)
-                        )
-                    }
-                } ?: run {
+                } else {
                     Icon(
                         Icons.Filled.AccountCircle,
                         contentDescription = "person avatar icon",
@@ -319,9 +279,9 @@ fun CharacterScreen(mainActivity: MainActivity) {
                 OutlinedButton(
                     onClick = {
                         val file = uiState.image
-                        viewModel.deleteAvatarData()
+                        viewModel.deleteAvatarData() // очищает uiState.image
                         file?.let {
-                            if (deleteAvatar(file.absolutePath, mainActivity)){
+                            if (deleteAvatar(file, mainActivity)){
                                 Toast.makeText(context, "Файл модели успешно удалён", Toast.LENGTH_LONG).show()
                             } else {
                                 Toast.makeText(context, "Файл модели не удалён из-за ошибки", Toast.LENGTH_LONG).show()
