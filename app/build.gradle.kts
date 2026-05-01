@@ -110,10 +110,7 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.0-beta01")
 
     // CameraX core libraries
-    implementation("androidx.camera:camera-core:1.2.3")
-    implementation("androidx.camera:camera-camera2:1.2.3")
-    implementation("androidx.camera:camera-lifecycle:1.2.3")
-    implementation("androidx.camera:camera-view:1.2.3")
+    implementation("androidx.camera:camera-core:1.0.0-beta07")
 
     // Image loading and GPU-accelerated filtering
     implementation("com.github.bumptech.glide:glide:4.15.1")
@@ -135,11 +132,21 @@ dependencies {
     // the accurate sdk ML KIT
     implementation("com.google.mlkit:pose-detection-accurate:18.0.0-beta5")
 
+    // ML Kit Face Detection
+    implementation("com.google.mlkit:face-detection:16.1.6")
+    implementation("com.google.mlkit:face-detection:16.1.6")
+
+    // ML Kit Common
+    implementation("com.google.mlkit:common:18.10.0")
+
+    // Google Play Services
+    implementation("com.google.android.gms:play-services-tasks:18.1.0")
 
     // Filament
-    implementation("com.google.android.filament:filament-android:1.51.2")
-    implementation("com.google.android.filament:filament-utils-android:1.51.2")
-    implementation("com.google.android.filament:gltfio-android:1.51.2")
+    implementation("com.google.android.filament:filament-android:1.28.0")
+    implementation("com.google.android.filament:filament-utils-android:1.28.0")
+    implementation("com.google.android.filament:gltfio-android:1.28.0")
+
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")

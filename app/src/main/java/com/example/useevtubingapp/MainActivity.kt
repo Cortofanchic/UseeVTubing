@@ -51,6 +51,13 @@ import com.google.android.filament.utils.Utils
 import com.google.mlkit.vision.pose.PoseLandmark
 import kotlin.math.max
 import androidx.appcompat.app.AlertDialog
+import com.google.mlkit.vision.face.Face
+import com.google.mlkit.vision.face.FaceContour
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetectorOptions
+import com.google.mlkit.vision.face.FaceLandmark
+import com.google.mlkit.vision.pose.Pose
+import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -71,6 +78,17 @@ class MainActivity : ComponentActivity() {
 
     var poseDetector = PoseDetection.getClient(options)
 
+    val optionsFace = FaceDetectorOptions.Builder()
+        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE) // или FAST
+        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL) // для определения ключевых точек
+        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)   // для получения контуров
+        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL) // для улыбки/глаз
+        .setMinFaceSize(0.15f) // минимальный размер лица (15% от ширины кадра)
+        .enableTracking() // для отслеживания лица между кадрами
+        .build()
+
+    val faceDetector = FaceDetection.getClient(optionsFace)
+
     var shouldShowPhoto: MutableState<Boolean> = mutableStateOf(false)
     var shouldWork: MutableState<Boolean> = mutableStateOf(false)
 
@@ -79,8 +97,8 @@ class MainActivity : ComponentActivity() {
 
     var shouldShowCamera: MutableState<Boolean> = mutableStateOf(false)
     var shouldUseMicrophone: MutableState<Boolean> = mutableStateOf(false)
-    var poseResults = mutableStateOf("No pose detected")
-
+    var poseResults = mutableStateOf(null as Pose?)
+    var faceResults = mutableStateOf(null as Face?)
     // Ланчер для нескольких разрешений
     private val requestPermissionLauncherForArray = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -244,26 +262,38 @@ class MainActivity : ComponentActivity() {
         try {
             val image = InputImage.fromFilePath(context, uri)
             poseDetector.process(image)
-                .addOnSuccessListener { results ->
-                    val allPoseLandmarks = results.allPoseLandmarks
-                    poseResults.value = "$allPoseLandmarks"
+                .addOnSuccessListener { pose ->
+                    poseResults.value = pose
                 }
                 .addOnFailureListener { e ->
-                    poseResults.value = "0"
+                    poseResults.value = null
+                }
+            faceDetector.process(image)
+                .addOnSuccessListener { faces ->
+                    if (faces.isNotEmpty()) {
+                        faceResults.value = faces[0]
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.e("FaceDetection", "Ошибка", e)
                 }
         } catch (e: IOException) {
-            poseResults.value = "0"
+            poseResults.value = null
             Toast.makeText(context, "$e", Toast.LENGTH_LONG).show()
         }
     }
 
-
     fun deleteFile(file: File): Boolean {
         if (!file.exists()) {
+            return true
+        }
+        try {
+            file.delete()
+            return true
+        } catch (e: Exception){
+            Log.e("Usee", "Exception while deleting file $e")
             return false
         }
-        file.delete()
-        return true
     }
 
     private fun scaleBitmapForProcessing(bitmap: Bitmap): Bitmap {
@@ -295,32 +325,70 @@ class MainActivity : ComponentActivity() {
 
             poseDetector.process(image)
                 .addOnSuccessListener { results ->
-                    val allPoseLandmarks = results.allPoseLandmarks
-                    poseResults.value = "$allPoseLandmarks"
+                    poseResults.value = results
                 }
                 .addOnFailureListener {
-                    poseResults.value = "No pose detected"
+                    poseResults.value = null
                 }
+            faceDetector.process(image)
+                .addOnSuccessListener { faces ->
+                    if (faces.isNotEmpty()) {
+                        faceResults.value = faces[0]
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.e("FaceDetection", "Ошибка", e)
+                }
+
         } catch (e: Exception) {
             Log.e("Usee", "Error processing frame", e)
-            poseResults.value = "No pose detected"
+            poseResults.value = null
+            faceResults.value = null
+        }
+    }
+
+    fun applyPose(renderer: ModelRenderer, width: Float, height: Float){
+        if (renderer.isReady()) {
+            poseResults.value?.let {
+                renderer.applyPoseToGLB(poseResults.value!!, width, height)
+            } ?: {
+                Log.d("ModelRenderer", "Pose don't found")
+            }
+        }
+    }
+
+    fun applyFace(renderer: ModelRenderer){
+        if (renderer.isReady()) {
+            faceResults.value?.let {
+                renderer.applyFaceToGLB(faceResults.value!!)
+            } ?: {
+                Log.d("ModelRenderer", "Face don't found")
+            }
         }
     }
 
     fun changeOutputView(previewView: PreviewView, context: Context): PreviewView {
         try {
-            val bitmap = Bitmap.createBitmap(previewView.width, previewView.height, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            previewView.draw(canvas)
+            if (previewView.width > 0 && previewView.height > 0) {
 
-            val tempFile = File(context.cacheDir, "preview_usee_${System.currentTimeMillis()}.jpg")
-            FileOutputStream(tempFile).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                val bitmap = Bitmap.createBitmap(
+                    previewView.width,
+                    previewView.height,
+                    Bitmap.Config.ARGB_8888
+                )
+                val canvas = Canvas(bitmap)
+                previewView.draw(canvas)
+
+                val tempFile =
+                    File(context.cacheDir, "preview_usee_${System.currentTimeMillis()}.jpg")
+                FileOutputStream(tempFile).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                }
+
+                bitmap.recycle()
+                val uri = Uri.fromFile(tempFile)
+                processUri(uri, context)
             }
-
-            bitmap.recycle()
-            val uri = Uri.fromFile(tempFile)
-            processUri(uri, context)
         } catch (e: Exception) {
             Log.e("Usee", "Error converting PreviewView to Bitmap", e)
         }
@@ -358,6 +426,68 @@ class MainActivity : ComponentActivity() {
             }
             .setCancelable(false)
             .show()
+    }
+
+    fun processFrameForPoseDetectionFromImage(
+        inputImage: InputImage,
+        onComplete: () -> Unit,
+        onCompleteSuccess: () -> Unit
+    ) {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastProcessedTime < frameProcessingInterval) {
+            onComplete()
+            return
+        }
+        lastProcessedTime = currentTime
+
+        var completed = 0
+        val total = 2
+
+        fun safeComplete() {
+            completed++
+            if (completed >= total) {
+                onComplete()
+                onCompleteSuccess()
+            }
+        }
+
+        // Pose
+        try {
+            poseDetector.process(inputImage)
+                .addOnSuccessListener { pose ->
+                    poseResults.value = pose
+                    safeComplete()
+                    onCompleteSuccess()
+                }
+                .addOnFailureListener { e ->
+                    Log.e("MainActivity", "Pose detection failed", e)
+                    poseResults.value = null
+                    safeComplete()
+                    onCompleteSuccess()
+                }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Pose exception", e)
+            poseResults.value = null
+            safeComplete()
+        }
+
+        // Face
+        try {
+            faceDetector.process(inputImage)
+                .addOnSuccessListener { faces ->
+                    faceResults.value = faces.firstOrNull()
+                    safeComplete()
+                }
+                .addOnFailureListener { e ->
+                    Log.e("MainActivity", "Face detection failed", e)
+                    faceResults.value = null
+                    safeComplete()
+                }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Face exception", e)
+            faceResults.value = null
+            safeComplete()
+        }
     }
 
     @OptIn(ExperimentalAnimationApi::class, ExperimentalMaterial3Api::class)

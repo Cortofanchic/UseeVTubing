@@ -166,7 +166,7 @@ fun copyStreamToFile(inputStream: InputStream, outputFile: File) {
 
 fun deleteAvatar(avatar: String, activity: MainActivity) : Boolean{
     try {
-        activity.deleteFile(avatar)
+        activity.deleteFile(File(avatar))
         return true
     } catch (e: Exception){
         return false
@@ -211,21 +211,24 @@ fun CharacterScreen(mainActivity: MainActivity) {
                 if (uiState.image != null){
                     val file = File(uiState.image)
                     val renderer = ModelRenderer()
-                        Surface(
-                            modifier = Modifier.width(400.dp).height(400.dp),
-                            color = MaterialTheme.colorScheme.background
-                        ) {
-                            AndroidView(factory = { context ->
-                                SurfaceView(context).apply {
-                                    layoutParams = android.view.ViewGroup.LayoutParams(
-                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                    )
-                                    renderer.onSurfaceAvailable(this, mainActivity.lifecycle, file)
-                                    setTag(renderer)
+                    Surface(
+                        modifier = Modifier.width(400.dp).height(400.dp),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        AndroidView(factory = { context ->
+                            SurfaceView(context).apply {
+                                layoutParams = android.view.ViewGroup.LayoutParams(
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                renderer.onSurfaceAvailable(this, mainActivity.lifecycle, file)
+                                renderer.setOnModelReadyListener {
+                                    renderer.setInitialTransform(0.125f, 180f)
                                 }
-                            })
-                        }
+                                setTag(renderer)
+                            }
+                        })
+                    }
                 } else {
                     Icon(
                         Icons.Filled.AccountCircle,
