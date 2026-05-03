@@ -80,11 +80,11 @@ private fun takePhoto(
     })
 }
 
-//private suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
-//    ProcessCameraProvider.getInstance(this).also { future ->
-//        future.addListener({ continuation.resume(future.get()) }, ContextCompat.getMainExecutor(this))
-//    }
-//}
+private suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
+    ProcessCameraProvider.getInstance(this).also { future ->
+        future.addListener({ continuation.resume(future.get()) }, ContextCompat.getMainExecutor(this))
+    }
+}
 
 @androidx.annotation.OptIn(ExperimentalGetImage::class)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -154,11 +154,14 @@ fun CameraScreen(mainActivity: MainActivity) {
                 onCompleteSuccess = {
                     if (renderer.isReady()) {
                         val pose = mainActivity.poseResults.value
-                        if (pose != null) {
+                        if (pose?.allPoseLandmarks?.isEmpty() == true){
+                            renderer.hideModel()
+                        } else if (pose != null){
                             mainActivity.applyPose(renderer, width, height)
                             mainActivity.applyFace(renderer)
-                        }
-                        // hideModel не вызываем – поза замирает
+                        } else (
+                            Log.d("PoseDetection", "Don't have pose")
+                        )
                     }
                 },
                 onComplete = { imageProxy.close() }
@@ -169,15 +172,15 @@ fun CameraScreen(mainActivity: MainActivity) {
     // Запуск камеры
     LaunchedEffect(lensFacing.value) {
         try {
-//            val cameraProvider = context.getCameraProvider()
-//            cameraProvider.unbindAll()
-//            cameraProvider.bindToLifecycle(
-//                lifecycleOwner,
-//                CameraSelector.Builder().requireLensFacing(lensFacing.value).build(),
-//                preview,
-//                imageCapture,
-//                imageAnalysis
-//            )
+            val cameraProvider = context.getCameraProvider()
+            cameraProvider.unbindAll()
+            cameraProvider.bindToLifecycle(
+                lifecycleOwner,
+                CameraSelector.Builder().requireLensFacing(lensFacing.value).build(),
+                preview,
+                imageCapture,
+                imageAnalysis
+            )
             preview.setSurfaceProvider(previewView.surfaceProvider)
             Log.d("CameraScreen", "Camera bound, lens=${lensFacing.value}")
         } catch (e: Exception) {
@@ -198,21 +201,19 @@ fun CameraScreen(mainActivity: MainActivity) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
-                .height(600.dp)
-                .fillMaxWidth(0.9f),
+                .fillMaxHeight(0.8f)
+                .fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.Top
         ) {
             if (mainActivity.shouldShowCamera.value) {
                 if (avatarFile != null) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
+                        AndroidView({ previewView }, modifier = Modifier.fillMaxSize(0.3f))
                         AndroidView(factory = { context ->
                             SurfaceView(context).apply {
                                 layoutParams = ViewGroup.LayoutParams(MATCH_PARENT,MATCH_PARENT)
                                 holder.setFormat(PixelFormat.TRANSLUCENT)
-                                setZOrderOnTop(true)
-                                setZOrderMediaOverlay(true)
 
                                 renderer.onSurfaceAvailable(this, lifecycle, avatarFile)
                             }

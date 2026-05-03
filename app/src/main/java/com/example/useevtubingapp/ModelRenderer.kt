@@ -281,9 +281,7 @@ class ModelRenderer {
         Log.d(TAG, "Initial settings applied")
     }
 
-    // ----------------------------------------------------------------------
-    // Публичные методы (сохранены все)
-    // ----------------------------------------------------------------------
+    // Публичные методы
 
     fun setInitialTransform(scale: Float = 0.5f, rotationY: Float = 180f) {
         bodyScale = scale
@@ -298,38 +296,38 @@ class ModelRenderer {
         Log.d(TAG, "Initial transform: scale=$scale, rotationY=$rotationY")
     }
 
-    fun setInitialScale(scale: Float) {
-        if (scale <= 0f) return
-        bodyScale = scale
-        targetBodyScale = scale
-        isModelVisible = true
-        if (isModelReady) {
-            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
-            modelViewer.animator?.updateBoneMatrices()
-        }
-        Log.d(TAG, "Initial scale set to: $scale")
-    }
-
-    fun setModelScale(scale: Float) {
-        if (scale <= 0f) return
-        targetBodyScale = scale.coerceIn(0.3f, 3.0f)
-        isModelVisible = true
-        if (isModelReady) {
-            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
-            modelViewer.animator?.updateBoneMatrices()
-        }
-        Log.d(TAG, "Model scale set to: $targetBodyScale")
-    }
-
-    fun flipModel180Degrees() {
-        bodyRotationY = 180f
-        targetBodyRotationY = 180f
-        if (isModelReady) {
-            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
-            modelViewer.animator?.updateBoneMatrices()
-        }
-        Log.d(TAG, "Model flipped 180 degrees")
-    }
+//    fun setInitialScale(scale: Float) {
+//        if (scale <= 0f) return
+//        bodyScale = scale
+//        targetBodyScale = scale
+//        isModelVisible = true
+//        if (isModelReady) {
+//            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
+//            modelViewer.animator?.updateBoneMatrices()
+//        }
+//        Log.d(TAG, "Initial scale set to: $scale")
+//    }
+//
+//    fun setModelScale(scale: Float) {
+//        if (scale <= 0f) return
+//        targetBodyScale = scale.coerceIn(0.3f, 3.0f)
+//        isModelVisible = true
+//        if (isModelReady) {
+//            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
+//            modelViewer.animator?.updateBoneMatrices()
+//        }
+//        Log.d(TAG, "Model scale set to: $targetBodyScale")
+//    }
+//
+//    fun flipModel180Degrees() {
+//        bodyRotationY = 180f
+//        targetBodyRotationY = 180f
+//        if (isModelReady) {
+//            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
+//            modelViewer.animator?.updateBoneMatrices()
+//        }
+//        Log.d(TAG, "Model flipped 180 degrees")
+//    }
 
     fun applyPoseToGLB(pose: Pose, imageWidth: Float, imageHeight: Float) {
         if (!isModelReady) return
@@ -450,7 +448,7 @@ class ModelRenderer {
     fun hideModel() {
         if (!isModelReady) return
         isModelVisible = false
-        setBodyTransform(bodyRotationX, bodyRotationY, 0.01f, bodyPositionY)
+        setBodyTransform(bodyRotationX, bodyRotationY, 0.001f, bodyPositionY)
         modelViewer.animator?.updateBoneMatrices()
         Log.d(TAG, "Model hidden")
     }
@@ -491,21 +489,21 @@ class ModelRenderer {
     private fun lerp(from: Float, to: Float, t: Float) = from + (to - from) * t
 
     fun isReady(): Boolean = isModelReady
-    fun waitForModel(callback: () -> Unit) {
-        if (isModelReady) callback() else setOnModelReadyListener(callback)
-    }
-
-    fun hasSkeleton(): Boolean {
-        val asset = modelViewer.asset ?: return false
-        val tm = modelViewer.engine.transformManager
-        val boneKeywords = listOf("J_Bip", "Bip", "mixamorig", "Bone", "joint", "Head", "Spine", "Hip", "Shoulder")
-        val count = asset.entities.count { entity ->
-            val name = asset.getName(entity) ?: return@count false
-            tm.getInstance(entity) != 0 && boneKeywords.any { name.contains(it, ignoreCase = true) }
-        }
-        Log.d(TAG, "hasSkeleton: found $count bone-like entities")
-        return count >= 5
-    }
+//    fun waitForModel(callback: () -> Unit) {
+//        if (isModelReady) callback() else setOnModelReadyListener(callback)
+//    }
+//
+//    fun hasSkeleton(): Boolean {
+//        val asset = modelViewer.asset ?: return false
+//        val tm = modelViewer.engine.transformManager
+//        val boneKeywords = listOf("J_Bip", "Bip", "mixamorig", "Bone", "joint", "Head", "Spine", "Hip", "Shoulder")
+//        val count = asset.entities.count { entity ->
+//            val name = asset.getName(entity) ?: return@count false
+//            tm.getInstance(entity) != 0 && boneKeywords.any { name.contains(it, ignoreCase = true) }
+//        }
+//        Log.d(TAG, "hasSkeleton: found $count bone-like entities")
+//        return count >= 5
+//    }
 
     private fun cleanup() {
         if (::modelViewer.isInitialized) modelViewer.destroyModel()
