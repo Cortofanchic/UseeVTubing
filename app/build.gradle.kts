@@ -148,13 +148,13 @@ dependencies {
     implementation("com.google.android.filament:filament-utils-android:1.28.0")
     implementation("com.google.android.filament:gltfio-android:1.28.0")
 
-//    // MediaPipe
-//    implementation("com.google.mediapipe:tasks-vision:0.10.14")
-
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-common:2.8.7")
 
     // WebView
     implementation("androidx.webkit:webkit:1.7.0")
+
+    // FFmeg
+    //implementation("com.arthenica:ffmpeg-kit-full:6.0-2")
 }

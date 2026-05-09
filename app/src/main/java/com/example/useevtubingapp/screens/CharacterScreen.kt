@@ -224,6 +224,7 @@ fun CharacterScreen(mainActivity: MainActivity) {
                                 renderer.onSurfaceAvailable(this, mainActivity.lifecycle, file)
                                 renderer.setOnModelReadyListener {
                                     renderer.setInitialTransform(0.125f, 180f)
+                                    renderer.normalizeBodyTransform()
                                 }
                                 setTag(renderer)
                             }

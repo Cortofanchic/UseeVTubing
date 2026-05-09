@@ -70,21 +70,21 @@ class MainActivity : ComponentActivity() {
     var uiStateSaved: String? = null
 
     private var lastProcessedTime = 0L
-    private val frameProcessingInterval = 500 // ms
+    private val frameProcessingInterval = 400 // ms
 
     private var options = AccuratePoseDetectorOptions.Builder()
-        .setDetectorMode(AccuratePoseDetectorOptions.STREAM_MODE)
+        .setDetectorMode(AccuratePoseDetectorOptions.SINGLE_IMAGE_MODE)
         .build()
 
     var poseDetector = PoseDetection.getClient(options)
 
     val optionsFace = FaceDetectorOptions.Builder()
-        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE) // или FAST
-        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL) // для определения ключевых точек
-        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)   // для получения контуров
-        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL) // для улыбки/глаз
-        .setMinFaceSize(0.15f) // минимальный размер лица (15% от ширины кадра)
-        .enableTracking() // для отслеживания лица между кадрами
+        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
+        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_ALL)
+        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+        .setMinFaceSize(0.15f)
+        .enableTracking()
         .build()
 
     val faceDetector = FaceDetection.getClient(optionsFace)
@@ -206,17 +206,17 @@ class MainActivity : ComponentActivity() {
 
     private fun checkAndRequestWritePermission() {
         when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
-                // Android 11+
-                if (Environment.isExternalStorageManager()) {
-                    shouldWork.value = true
-                } else {
-                    shouldWork.value = false
-                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    intent.data = Uri.parse("package:$packageName")
-                    requestManageStorageLauncher.launch(intent)
-                }
-            }
+//            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+//            u    // Android 11+
+//                if (Environment.isExternalStorageManager()) {
+//                    shouldWork.value = true
+//                } else {
+//                    shouldWork.value = false
+//                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+//                    intent.data = Uri.parse("package:$packageName")
+//                    requestManageStorageLauncher.launch(intent)
+//                }
+//            }
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
                 // Android 13+
                 val hasPermission = ContextCompat.checkSelfPermission(
@@ -228,7 +228,10 @@ class MainActivity : ComponentActivity() {
                 } else {
                     shouldWork.value = false
                     requestPermissionLauncherForArray.launch(
-                        arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+                        arrayOf(Manifest.permission.READ_MEDIA_IMAGES,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                            Manifest.permission.READ_EXTERNAL_STORAGE
+                        )
                     )
                 }
             }

@@ -1,12 +1,17 @@
 package com.example.useevtubingapp
 
+import android.graphics.Bitmap
 import android.graphics.PointF
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Choreographer
+import android.view.Surface
 import android.view.SurfaceView
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import com.google.android.filament.SwapChain
 import com.google.android.filament.View
 import com.google.android.filament.utils.ModelViewer
 import com.google.mlkit.vision.face.Face
@@ -33,7 +38,7 @@ class ModelRenderer {
     private var isLoading = false
     private var onModelReadyCallback: (() -> Unit)? = null
 
-    private var isModelVisible = true  // Флаг видимости
+    private var isModelVisible = true
 
     private val bindPoseCache = mutableMapOf<String, FloatArray>()
     private val boneEntityCache = mutableMapOf<String, Int>()
@@ -48,8 +53,12 @@ class ModelRenderer {
     private var targetBodyRotationX = 0f
     private var targetBodyPositionY = 0f
 
-    private var targetBodyScale = 0.8f
-    private val scaleSmoothingFactor = 0.25f
+    private var frameCaptureCallback: ((Bitmap) -> Unit)? = null
+    private var isFrameCaptureEnabled = false
+    private var lastCaptureTime = 0L
+    private val CAPTURE_INTERVAL_MS = 33L
+
+    private var recordingCallback: ((Bitmap) -> Unit)? = null
 
     private val boneRotations = mutableMapOf<String, Vector3D>()
 
@@ -88,6 +97,52 @@ class ModelRenderer {
             cleanup()
         }
     }
+
+    //функции для покадровой отрисовки видео
+    fun startFrameCapture(callback: (Bitmap) -> Unit) {
+        recordingCallback = callback
+        isFrameCaptureEnabled = true
+    }
+
+
+    //Остановить захват кадров
+    fun stopFrameCapture() {
+        isFrameCaptureEnabled = false
+        recordingCallback = null
+    }
+
+
+    //Захватить текущий кадр (вызывается в loop)
+    fun captureCurrentFrame() {
+        if (!isFrameCaptureEnabled || !isModelReady) return
+
+        val width = surfaceView.width
+        val height = surfaceView.height
+
+        if (width <= 0 || height <= 0) return
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+
+            android.view.PixelCopy.request(
+                surfaceView,
+                bitmap,
+                { copyResult ->
+                    if (copyResult == android.view.PixelCopy.SUCCESS) {
+                        recordingCallback?.invoke(bitmap)
+                    } else {
+                        bitmap.recycle()
+                    }
+                },
+                Handler(Looper.getMainLooper())
+            )
+        }
+    }
+
+
+
+
+
 
     fun onSurfaceAvailable(surfaceView: SurfaceView, lifecycle: Lifecycle, file: File) {
         choreographer = Choreographer.getInstance()
@@ -141,11 +196,6 @@ class ModelRenderer {
             return
         }
 
-        Log.d(TAG, "Animator: ${modelViewer.animator}, animations: ${modelViewer.animator?.animationCount ?: 0}")
-
-        val allNames = asset.entities.toList().mapNotNull { asset.getName(it) }.sorted()
-        Log.d(TAG, "All entity names: ${allNames.joinToString(", ")}")
-
         val tm = modelViewer.engine.transformManager
         rootTransformInstance = tm.getInstance(asset.root).takeIf { it != 0 }
             ?: asset.entities.firstOrNull { tm.getInstance(it) != 0 }?.let { tm.getInstance(it) } ?: 0
@@ -175,39 +225,10 @@ class ModelRenderer {
                         val bindMat = FloatArray(16)
                         tm.getTransform(instance, bindMat)
                         bindPoseCache[logicalName] = bindMat
-                        Log.d(TAG, "Cached (exact) $logicalName -> '$name'")
                         break
                     }
                 }
             }
-        }
-
-        val missing = boneNameMapping.keys.filter { !boneEntityCache.containsKey(it) }
-        if (missing.isNotEmpty()) {
-            Log.d(TAG, "Trying partial match for: $missing")
-            for (entity in asset.entities) {
-                val entityName = asset.getName(entity) ?: continue
-                val instance = tm.getInstance(entity)
-                if (instance == 0) continue
-                for (logicalName in missing) {
-                    if (boneEntityCache.containsKey(logicalName)) continue
-                    val patterns = boneNameMapping[logicalName] ?: continue
-                    if (patterns.any { entityName.contains(it, ignoreCase = true) }) {
-                        boneEntityCache[logicalName] = entity
-                        val bindMat = FloatArray(16)
-                        tm.getTransform(instance, bindMat)
-                        bindPoseCache[logicalName] = bindMat
-                        Log.d(TAG, "Cached (partial) $logicalName -> '$entityName'")
-                        break
-                    }
-                }
-            }
-        }
-
-        Log.d(TAG, "=== Bone cache result ===")
-        boneNameMapping.keys.forEach { name ->
-            if (boneEntityCache.containsKey(name)) Log.d(TAG, "  OK  $name")
-            else Log.w(TAG, "  MISSING $name")
         }
     }
 
@@ -227,23 +248,30 @@ class ModelRenderer {
             tm.setTransform(instance, rotMat)
         }
 
-        val currentScale = if (isModelVisible) bodyScale else 0.01f
+        val currentScale = if (isModelVisible) bodyScale else 1f
         setBodyTransform(bodyRotationX, bodyRotationY, currentScale, bodyPositionY)
-
         modelViewer.animator?.updateBoneMatrices()
     }
 
     private fun setBodyTransform(rotX: Float, rotY: Float, scale: Float, posY: Float) {
-        if (rootTransformInstance == 0) return
+        if (rootTransformInstance == 0) {
+            Log.e(TAG, "setBodyTransform: rootTransformInstance == 0, cannot apply scale")
+            return
+        }
         val tm = modelViewer.engine.transformManager
 
-        val m = eulerToMatrix(rotX, rotY, 0f)
+        val adjustedRotY = if (isModelVisible) rotY + 90f else rotY
+        val adjustedRotX = if (isModelVisible) rotX + 0f else rotX
+        val adjustedRollZ = if (isModelVisible) 0f else 0f
+
+        val m = eulerToMatrix(adjustedRotX, adjustedRotY, adjustedRollZ)
         m[0] *= scale; m[1] *= scale; m[2] *= scale
         m[4] *= scale; m[5] *= scale; m[6] *= scale
         m[8] *= scale; m[9] *= scale; m[10] *= scale
         m[12] = 0f; m[13] = posY; m[14] = 0f; m[15] = 1f
 
         tm.setTransform(rootTransformInstance, m)
+        Log.d(TAG, "setBodyTransform: scale = $scale, posY = $posY, rotX = $adjustedRotX, rotY = $adjustedRotY, rollZ = $adjustedRollZ")
     }
 
     private fun eulerToMatrix(pitchDeg: Float, yawDeg: Float, rollDeg: Float): FloatArray {
@@ -261,6 +289,38 @@ class ModelRenderer {
         )
     }
 
+    fun normalizeBodyTransform() {
+        val scaleNow = bodyScale
+        val posY = bodyPositionY
+        if (rootTransformInstance == 0) {
+            Log.e(TAG, "setBodyTransform: rootTransformInstance == 0, cannot apply scale")
+            return
+        }
+        val tm = modelViewer.engine.transformManager
+
+        val m = eulerToMatrix(0f, 180f, 0f)
+        m[0] *= scaleNow; m[1] *= scaleNow; m[2] *= scaleNow
+        m[4] *= scaleNow; m[5] *= scaleNow; m[6] *= scaleNow
+        m[8] *= scaleNow; m[9] *= scaleNow; m[10] *= scaleNow
+        m[12] = 0f; m[13] = posY; m[14] = 0f; m[15] = 1f
+
+        tm.setTransform(rootTransformInstance, m)
+    }
+
+    fun resetPose() {
+        if (!isModelReady) return
+        for (key in boneRotations.keys) {
+            boneRotations[key] = Vector3D()
+        }
+        bodyPositionY = 0f
+        targetBodyPositionY = 0f
+        bodyRotationX = 0f
+        targetBodyRotationX = 0f
+        bodyRotationY = 180f
+        targetBodyRotationY = 180f
+        applyAllTransformations()
+    }
+
     private fun setupScene() {
         modelViewer.scene.skybox = null
         modelViewer.view.blendMode = View.BlendMode.TRANSLUCENT
@@ -272,65 +332,23 @@ class ModelRenderer {
 
     private fun applyInitialSettings() {
         bodyScale = 0.5f
-        targetBodyScale = 0.5f
         bodyRotationY = 180f
         targetBodyRotationY = 180f
         isModelVisible = true
-        setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
-        modelViewer.animator?.updateBoneMatrices()
-        Log.d(TAG, "Initial settings applied")
+        applyAllTransformations()
     }
-
-    // Публичные методы
 
     fun setInitialTransform(scale: Float = 0.5f, rotationY: Float = 180f) {
         bodyScale = scale
-        targetBodyScale = scale
         bodyRotationY = rotationY
         targetBodyRotationY = rotationY
         isModelVisible = true
-        if (isModelReady) {
-            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
-            modelViewer.animator?.updateBoneMatrices()
-        }
-        Log.d(TAG, "Initial transform: scale=$scale, rotationY=$rotationY")
+        if (isModelReady) applyAllTransformations()
     }
-
-//    fun setInitialScale(scale: Float) {
-//        if (scale <= 0f) return
-//        bodyScale = scale
-//        targetBodyScale = scale
-//        isModelVisible = true
-//        if (isModelReady) {
-//            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
-//            modelViewer.animator?.updateBoneMatrices()
-//        }
-//        Log.d(TAG, "Initial scale set to: $scale")
-//    }
-//
-//    fun setModelScale(scale: Float) {
-//        if (scale <= 0f) return
-//        targetBodyScale = scale.coerceIn(0.3f, 3.0f)
-//        isModelVisible = true
-//        if (isModelReady) {
-//            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
-//            modelViewer.animator?.updateBoneMatrices()
-//        }
-//        Log.d(TAG, "Model scale set to: $targetBodyScale")
-//    }
-//
-//    fun flipModel180Degrees() {
-//        bodyRotationY = 180f
-//        targetBodyRotationY = 180f
-//        if (isModelReady) {
-//            setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
-//            modelViewer.animator?.updateBoneMatrices()
-//        }
-//        Log.d(TAG, "Model flipped 180 degrees")
-//    }
 
     fun applyPoseToGLB(pose: Pose, imageWidth: Float, imageHeight: Float) {
         if (!isModelReady) return
+        resetPose()
         adjustScaleByPose(pose, imageHeight)
         updateBodyParams(pose, imageWidth, imageHeight)
         updateRotationsFromPose(pose)
@@ -339,7 +357,16 @@ class ModelRenderer {
 
     fun applyFaceToGLB(face: Face) {
         if (!isModelReady) return
-        // TODO: блендшейпы лица
+    }
+
+    private fun isLandmarkVisible(pose: Pose, landmarkType: Int): Boolean {
+        val landmark = pose.getPoseLandmark(landmarkType) ?: return false
+        return landmark.inFrameLikelihood > 0.3f
+    }
+
+    private fun get3D(pose: Pose, landmarkType: Int): Triple<Float, Float, Float>? {
+        val landmark = pose.getPoseLandmark(landmarkType) ?: return null
+        return Triple(landmark.position3D.x, landmark.position3D.z, landmark.position3D.y)
     }
 
     private fun updateBodyParams(pose: Pose, imageWidth: Float, imageHeight: Float) {
@@ -360,7 +387,15 @@ class ModelRenderer {
             val dy = lSh.position.y - lHip.position.y
             targetBodyRotationX = (atan2(dy, dx) * 180f / PI.toFloat() - 90f) * 0.5f
         }
-        if (nose != null && lHip != null && rHip != null) {
+
+        // Вертикальное положение по 3D координатам глаз
+        if (isLandmarkVisible(pose, PoseLandmark.LEFT_EYE) && isLandmarkVisible(pose, PoseLandmark.RIGHT_EYE)) {
+            val lEye3D = get3D(pose, PoseLandmark.LEFT_EYE)!!
+            val rEye3D = get3D(pose, PoseLandmark.RIGHT_EYE)!!
+            val eyeCenterY = (lEye3D.third + rEye3D.third) / 2f   // третий компонент — исходный Y (вертикаль)
+            // Инвертируем и учитываем масштаб
+            targetBodyPositionY = -eyeCenterY * bodyScale.coerceAtLeast(0.1f) * 2f / 10000
+        } else if (nose != null && lHip != null && rHip != null) {
             val hipCenterY = (lHip.position.y + rHip.position.y) / 2f
             val bodyHeight = abs(nose.position.y - hipCenterY)
             targetBodyPositionY = -((1f - bodyHeight / imageHeight) * 0.5f)
@@ -369,47 +404,78 @@ class ModelRenderer {
         bodyRotationY = lerp(bodyRotationY, targetBodyRotationY, smoothingFactor)
         bodyRotationX = lerp(bodyRotationX, targetBodyRotationX, smoothingFactor)
         bodyPositionY = lerp(bodyPositionY, targetBodyPositionY, smoothingFactor)
-
-        bodyScale = lerp(bodyScale, targetBodyScale, scaleSmoothingFactor)
     }
 
     private fun updateRotationsFromPose(pose: Pose) {
-        val lSh = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
-        val lEl = pose.getPoseLandmark(PoseLandmark.LEFT_ELBOW)
-        val lWr = pose.getPoseLandmark(PoseLandmark.LEFT_WRIST)
-        if (lSh != null && lEl != null && lWr != null) {
-            boneRotations["LeftShoulder"] = Vector3D(z = -angleBetween(lSh.position, lEl.position, PointF(lEl.position.x, lEl.position.y - 20f)))
-            boneRotations["LeftElbow"]    = Vector3D(z = -angleBetween(lEl.position, lWr.position, PointF(lWr.position.x, lWr.position.y - 20f)))
+        if (isLandmarkVisible(pose, PoseLandmark.LEFT_SHOULDER) && isLandmarkVisible(pose, PoseLandmark.LEFT_ELBOW)) {
+            val lSh3D = get3D(pose, PoseLandmark.LEFT_SHOULDER)!!
+            val lEl3D = get3D(pose, PoseLandmark.LEFT_ELBOW)!!
+            boneRotations["LeftShoulder"] = Vector3D(z = -angleBetween3D(lSh3D, lEl3D))
+            if (isLandmarkVisible(pose, PoseLandmark.LEFT_WRIST)) {
+                val lWr3D = get3D(pose, PoseLandmark.LEFT_WRIST)!!
+                boneRotations["LeftElbow"] = Vector3D(z = -angleBetween3D(lEl3D, lWr3D))
+            }
         }
 
-        val rSh = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
-        val rEl = pose.getPoseLandmark(PoseLandmark.RIGHT_ELBOW)
-        val rWr = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
-        if (rSh != null && rEl != null && rWr != null) {
-            boneRotations["RightShoulder"] = Vector3D(z = angleBetween(rSh.position, rEl.position, PointF(rEl.position.x, rEl.position.y - 20f)))
-            boneRotations["RightElbow"]    = Vector3D(z = angleBetween(rEl.position, rWr.position, PointF(rWr.position.x, rWr.position.y - 20f)))
+        if (isLandmarkVisible(pose, PoseLandmark.RIGHT_SHOULDER) && isLandmarkVisible(pose, PoseLandmark.RIGHT_ELBOW)) {
+            val rSh3D = get3D(pose, PoseLandmark.RIGHT_SHOULDER)!!
+            val rEl3D = get3D(pose, PoseLandmark.RIGHT_ELBOW)!!
+            boneRotations["RightShoulder"] = Vector3D(z = angleBetween3D(rSh3D, rEl3D))
+            if (isLandmarkVisible(pose, PoseLandmark.RIGHT_WRIST)) {
+                val rWr3D = get3D(pose, PoseLandmark.RIGHT_WRIST)!!
+                boneRotations["RightElbow"] = Vector3D(z = angleBetween3D(rEl3D, rWr3D))
+            }
         }
 
-        val lHi = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
-        val lKn = pose.getPoseLandmark(PoseLandmark.LEFT_KNEE)
-        val lAn = pose.getPoseLandmark(PoseLandmark.LEFT_ANKLE)
-        if (lHi != null && lKn != null && lAn != null) {
-            boneRotations["LeftHip"]  = Vector3D(z =  angleBetween(lHi.position, lKn.position, PointF(lKn.position.x, lKn.position.y - 20f)))
-            boneRotations["LeftKnee"] = Vector3D(z = -angleBetween(lKn.position, lAn.position, PointF(lAn.position.x, lAn.position.y - 20f)))
+        if (isLandmarkVisible(pose, PoseLandmark.LEFT_HIP) && isLandmarkVisible(pose, PoseLandmark.LEFT_KNEE)) {
+            val lHi3D = get3D(pose, PoseLandmark.LEFT_HIP)!!
+            val lKn3D = get3D(pose, PoseLandmark.LEFT_KNEE)!!
+            boneRotations["LeftHip"] = Vector3D(z = angleBetween3D(lHi3D, lKn3D))
+            if (isLandmarkVisible(pose, PoseLandmark.LEFT_ANKLE)) {
+                val lAn3D = get3D(pose, PoseLandmark.LEFT_ANKLE)!!
+                boneRotations["LeftKnee"] = Vector3D(z = -angleBetween3D(lKn3D, lAn3D))
+            }
         }
 
-        val rHi = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
-        val rKn = pose.getPoseLandmark(PoseLandmark.RIGHT_KNEE)
-        val rAn = pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)
-        if (rHi != null && rKn != null && rAn != null) {
-            boneRotations["RightHip"]  = Vector3D(z = -angleBetween(rHi.position, rKn.position, PointF(rKn.position.x, rKn.position.y - 20f)))
-            boneRotations["RightKnee"] = Vector3D(z =  angleBetween(rKn.position, rAn.position, PointF(rAn.position.x, rAn.position.y - 20f)))
+        if (isLandmarkVisible(pose, PoseLandmark.RIGHT_HIP) && isLandmarkVisible(pose, PoseLandmark.RIGHT_KNEE)) {
+            val rHi3D = get3D(pose, PoseLandmark.RIGHT_HIP)!!
+            val rKn3D = get3D(pose, PoseLandmark.RIGHT_KNEE)!!
+            boneRotations["RightHip"] = Vector3D(z = -angleBetween3D(rHi3D, rKn3D))
+            if (isLandmarkVisible(pose, PoseLandmark.RIGHT_ANKLE)) {
+                val rAn3D = get3D(pose, PoseLandmark.RIGHT_ANKLE)!!
+                boneRotations["RightKnee"] = Vector3D(z = angleBetween3D(rKn3D, rAn3D))
+            }
         }
 
-        val nose = pose.getPoseLandmark(PoseLandmark.NOSE)
-        val lEar = pose.getPoseLandmark(PoseLandmark.LEFT_EAR)
-        val rEar = pose.getPoseLandmark(PoseLandmark.RIGHT_EAR)
-        if (nose != null && lEar != null && rEar != null) {
+        if (isLandmarkVisible(pose, PoseLandmark.LEFT_EYE) && isLandmarkVisible(pose, PoseLandmark.RIGHT_EYE) &&
+            isLandmarkVisible(pose, PoseLandmark.NOSE)) {
+            val lEye3D = get3D(pose, PoseLandmark.LEFT_EYE)!!
+            val rEye3D = get3D(pose, PoseLandmark.RIGHT_EYE)!!
+            val nose3D = get3D(pose, PoseLandmark.NOSE)!!
+
+            val eyeMidX = (lEye3D.first + rEye3D.first) / 2f
+            val eyeMidY = (lEye3D.second + rEye3D.second) / 2f
+            val eyeMidZ = (lEye3D.third + rEye3D.third) / 2f
+
+            val dirX = nose3D.first - eyeMidX
+            val dirY = nose3D.second - eyeMidY
+            val dirZ = nose3D.third - eyeMidZ
+
+            val rotX = atan2(dirY, sqrt(dirX * dirX + dirZ * dirZ)) * 180f / PI.toFloat() * 0.5f
+            val rotY = atan2(dirX, dirZ) * 180f / PI.toFloat() * 0.5f
+
+            val eyeDx = rEye3D.first - lEye3D.first
+            val eyeDy = rEye3D.second - lEye3D.second
+            val eyeDz = rEye3D.third - lEye3D.third
+            val rotZ = atan2(eyeDy, sqrt(eyeDx * eyeDx + eyeDz * eyeDz)) * 180f / PI.toFloat() * 0.3f
+
+            boneRotations["Head"] = Vector3D(x = rotX, y = rotY, z = rotZ)
+        } else if (isLandmarkVisible(pose, PoseLandmark.NOSE) &&
+            isLandmarkVisible(pose, PoseLandmark.LEFT_EAR) &&
+            isLandmarkVisible(pose, PoseLandmark.RIGHT_EAR)) {
+            val nose = pose.getPoseLandmark(PoseLandmark.NOSE)!!
+            val lEar = pose.getPoseLandmark(PoseLandmark.LEFT_EAR)!!
+            val rEar = pose.getPoseLandmark(PoseLandmark.RIGHT_EAR)!!
             val midX = (lEar.position.x + rEar.position.x) / 2f
             val midY = (lEar.position.y + rEar.position.y) / 2f
             boneRotations["Head"] = Vector3D(
@@ -419,37 +485,40 @@ class ModelRenderer {
         }
     }
 
+    private fun angleBetween3D(parent: Triple<Float, Float, Float>, child: Triple<Float, Float, Float>): Float {
+        val dx = child.first - parent.first
+        val dy = child.second - parent.second
+        val dz = child.third - parent.third
+
+        val downVector = Triple(0f, -1f, 0f)
+        val boneVector = Triple(dx, dy, dz)
+
+        val dot = boneVector.first * downVector.first + boneVector.second * downVector.second + boneVector.third * downVector.third
+        val mag1 = sqrt(boneVector.first * boneVector.first + boneVector.second * boneVector.second + boneVector.third * boneVector.third)
+        if (mag1 == 0f) return 0f
+        return acos((dot / mag1).coerceIn(-1f, 1f)) * 180f / PI.toFloat()
+    }
+
     fun adjustScaleByPose(pose: Pose, imageHeight: Float, desiredFillRatio: Float = 0.78f) {
         if (!isModelReady || imageHeight <= 0f) return
 
         val headPoint = getHeadPoint(pose)
         val shoulderPoint = getShoulderCenter(pose)
 
-        if (headPoint == null || shoulderPoint == null) {
-            return
-        }
+        if (headPoint == null || shoulderPoint == null) return
 
         val headToShoulderDistance = abs(headPoint.y - shoulderPoint.y)
 
-        if (headToShoulderDistance < 25f || headToShoulderDistance > imageHeight * 0.85f) {
-            return
-        }
-
-        val newTargetScale = (imageHeight * desiredFillRatio / headToShoulderDistance).coerceIn(0.35f, 2.5f)
-        targetBodyScale = newTargetScale
-        bodyScale = newTargetScale
+        bodyScale = (imageHeight * desiredFillRatio / headToShoulderDistance) * (10f / 3f)
         isModelVisible = true
 
-        Log.d(TAG, "Good pose → visible, scale=${"%.2f".format(newTargetScale)}")
-        setBodyTransform(bodyRotationX, bodyRotationY, bodyScale, bodyPositionY)
-        modelViewer.animator?.updateBoneMatrices()
+        Log.d(TAG, "Scale calculated: ${"%.2f".format(bodyScale)}")
     }
 
     fun hideModel() {
         if (!isModelReady) return
         isModelVisible = false
-        setBodyTransform(bodyRotationX, bodyRotationY, 0.001f, bodyPositionY)
-        modelViewer.animator?.updateBoneMatrices()
+        applyAllTransformations()
         Log.d(TAG, "Model hidden")
     }
 
@@ -489,32 +558,35 @@ class ModelRenderer {
     private fun lerp(from: Float, to: Float, t: Float) = from + (to - from) * t
 
     fun isReady(): Boolean = isModelReady
-//    fun waitForModel(callback: () -> Unit) {
-//        if (isModelReady) callback() else setOnModelReadyListener(callback)
-//    }
-//
-//    fun hasSkeleton(): Boolean {
-//        val asset = modelViewer.asset ?: return false
-//        val tm = modelViewer.engine.transformManager
-//        val boneKeywords = listOf("J_Bip", "Bip", "mixamorig", "Bone", "joint", "Head", "Spine", "Hip", "Shoulder")
-//        val count = asset.entities.count { entity ->
-//            val name = asset.getName(entity) ?: return@count false
-//            tm.getInstance(entity) != 0 && boneKeywords.any { name.contains(it, ignoreCase = true) }
-//        }
-//        Log.d(TAG, "hasSkeleton: found $count bone-like entities")
-//        return count >= 5
-//    }
 
     private fun cleanup() {
         if (::modelViewer.isInitialized) modelViewer.destroyModel()
+        isModelReady = false
     }
 
     inner class FrameCallback : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             try {
-                if (::choreographer.isInitialized) choreographer.postFrameCallback(this)
-                if (::modelViewer.isInitialized && isModelReady) modelViewer.render(frameTimeNanos)
-            } catch (_: Exception) { }
+                if (::choreographer.isInitialized) {
+                    choreographer.postFrameCallback(this)
+                }
+
+                if (::modelViewer.isInitialized && isModelReady) {
+                    // Рендерим модель
+                    modelViewer.render(frameTimeNanos)
+
+                    // Захватываем кадр для видео
+                    if (isFrameCaptureEnabled) {
+                        val currentTime = System.currentTimeMillis()
+                        if (lastCaptureTime == 0L || (currentTime - lastCaptureTime) >= CAPTURE_INTERVAL_MS) {
+                            captureCurrentFrame()
+                            lastCaptureTime = currentTime
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "FrameCallback error", e)
+            }
         }
     }
 }
