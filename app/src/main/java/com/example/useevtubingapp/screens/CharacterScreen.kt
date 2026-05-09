@@ -9,7 +9,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.DeleteForever
@@ -37,6 +39,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.useevtubingapp.MainActivity
 import com.example.useevtubingapp.ui.theme.blueDark7
 import com.example.useevtubingapp.ModelRenderer
+import com.google.android.filament.utils.radians
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -212,7 +215,7 @@ fun CharacterScreen(mainActivity: MainActivity) {
                     val file = File(uiState.image)
                     val renderer = ModelRenderer()
                     Surface(
-                        modifier = Modifier.width(400.dp).height(400.dp),
+                        modifier = Modifier.width(200.dp).height(200.dp).border(width = 0.dp, color=blueDark7, shape= RoundedCornerShape(100.dp)),
                         color = MaterialTheme.colorScheme.background
                     ) {
                         AndroidView(factory = { context ->
@@ -223,7 +226,7 @@ fun CharacterScreen(mainActivity: MainActivity) {
                                 )
                                 renderer.onSurfaceAvailable(this, mainActivity.lifecycle, file)
                                 renderer.setOnModelReadyListener {
-                                    renderer.setInitialTransform(0.125f, 180f)
+                                    renderer.setInitialTransform(0.2f, 180f)
                                     renderer.normalizeBodyTransform()
                                 }
                                 setTag(renderer)

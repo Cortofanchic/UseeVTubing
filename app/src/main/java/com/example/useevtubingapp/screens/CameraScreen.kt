@@ -63,6 +63,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import androidx.compose.material.icons.filled.Adjust
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -1004,10 +1005,11 @@ fun CameraScreen(mainActivity: MainActivity) {
                 modifier = Modifier.size(150.dp),
                 contentPadding = PaddingValues(0.dp),
                 border = BorderStroke(0.dp, color = Color(0x00FFFFFF)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = blueDark7)
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = blueDark7),
+
             ) {
                 Icon(
-                    Icons.Filled.MotionPhotosOn,
+                    Icons.Filled.Adjust,
                     contentDescription = if (isRecording) "stop video button" else "start video button",
                     tint = blueDark7,
                     modifier = if (isRecording)  Modifier.size(100.dp) else Modifier.size(150.dp)

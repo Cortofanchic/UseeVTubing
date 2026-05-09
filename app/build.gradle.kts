@@ -154,7 +154,4 @@ dependencies {
 
     // WebView
     implementation("androidx.webkit:webkit:1.7.0")
-
-    // FFmeg
-    //implementation("com.arthenica:ffmpeg-kit-full:6.0-2")
 }

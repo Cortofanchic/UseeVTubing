@@ -6,12 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Choreographer
-import android.view.Surface
 import android.view.SurfaceView
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
-import com.google.android.filament.SwapChain
 import com.google.android.filament.View
 import com.google.android.filament.utils.ModelViewer
 import com.google.mlkit.vision.face.Face
@@ -44,14 +42,26 @@ class ModelRenderer {
     private val boneEntityCache = mutableMapOf<String, Int>()
     private var rootTransformInstance: Int = 0
 
-    private var bodyRotationY = 0f
+    private var bodyRotationY = 180f
     private var bodyRotationX = 0f
     private var bodyPositionY = 0f
     private var bodyScale = 0.8f
     private val smoothingFactor = 0.3f
-    private var targetBodyRotationY = 0f
+    private var targetBodyRotationY = 180f
     private var targetBodyRotationX = 0f
     private var targetBodyPositionY = 0f
+
+    // Для стабилизации масштаба
+    private var stableScale = 0.8f
+    private val scaleSmoothingFactor = 0.15f  // Очень плавное изменение масштаба
+    private val minScale = 0.3f
+    private val maxScale = 2.0f
+
+    // Для отслеживания размера человека
+    private var basePersonHeight = 0f
+    private var isBasePersonHeightSet = false
+    private val personHeightHistory = mutableListOf<Float>()
+    private val maxHistorySize = 10
 
     private var frameCaptureCallback: ((Bitmap) -> Unit)? = null
     private var isFrameCaptureEnabled = false
@@ -104,13 +114,11 @@ class ModelRenderer {
         isFrameCaptureEnabled = true
     }
 
-
     //Остановить захват кадров
     fun stopFrameCapture() {
         isFrameCaptureEnabled = false
         recordingCallback = null
     }
-
 
     //Захватить текущий кадр (вызывается в loop)
     fun captureCurrentFrame() {
@@ -138,11 +146,6 @@ class ModelRenderer {
             )
         }
     }
-
-
-
-
-
 
     fun onSurfaceAvailable(surfaceView: SurfaceView, lifecycle: Lifecycle, file: File) {
         choreographer = Choreographer.getInstance()
@@ -172,7 +175,7 @@ class ModelRenderer {
                     put(bytes)
                     rewind()
                 }
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                Handler(Looper.getMainLooper()).post {
                     try {
                         modelViewer.loadModelGlb(buffer)
                         modelViewer.transformToUnitCube()
@@ -332,6 +335,7 @@ class ModelRenderer {
 
     private fun applyInitialSettings() {
         bodyScale = 0.5f
+        stableScale = 0.5f
         bodyRotationY = 180f
         targetBodyRotationY = 180f
         isModelVisible = true
@@ -340,6 +344,7 @@ class ModelRenderer {
 
     fun setInitialTransform(scale: Float = 0.5f, rotationY: Float = 180f) {
         bodyScale = scale
+        stableScale = scale
         bodyRotationY = rotationY
         targetBodyRotationY = rotationY
         isModelVisible = true
@@ -392,8 +397,7 @@ class ModelRenderer {
         if (isLandmarkVisible(pose, PoseLandmark.LEFT_EYE) && isLandmarkVisible(pose, PoseLandmark.RIGHT_EYE)) {
             val lEye3D = get3D(pose, PoseLandmark.LEFT_EYE)!!
             val rEye3D = get3D(pose, PoseLandmark.RIGHT_EYE)!!
-            val eyeCenterY = (lEye3D.third + rEye3D.third) / 2f   // третий компонент — исходный Y (вертикаль)
-            // Инвертируем и учитываем масштаб
+            val eyeCenterY = (lEye3D.third + rEye3D.third) / 2f
             targetBodyPositionY = -eyeCenterY * bodyScale.coerceAtLeast(0.1f) * 2f / 10000
         } else if (nose != null && lHip != null && rHip != null) {
             val hipCenterY = (lHip.position.y + rHip.position.y) / 2f
@@ -505,14 +509,63 @@ class ModelRenderer {
         val headPoint = getHeadPoint(pose)
         val shoulderPoint = getShoulderCenter(pose)
 
-        if (headPoint == null || shoulderPoint == null) return
+        if (headPoint == null || shoulderPoint == null) {
+            // Если не можем определить позу, используем последний стабильный масштаб
+            bodyScale = lerp(bodyScale, stableScale, scaleSmoothingFactor)
+            return
+        }
 
+        // Вычисляем текущую высоту человека в пикселях
         val headToShoulderDistance = abs(headPoint.y - shoulderPoint.y)
 
-        bodyScale = (imageHeight * desiredFillRatio / headToShoulderDistance) * (10f / 3f)
-        isModelVisible = true
+        // Также вычисляем полную высоту тела если доступны ключевые точки
+        var fullBodyHeight = headToShoulderDistance * 3f
 
-        Log.d(TAG, "Scale calculated: ${"%.2f".format(bodyScale)}")
+        val leftAnkle = pose.getPoseLandmark(PoseLandmark.LEFT_ANKLE)?.position
+        val rightAnkle = pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)?.position
+
+        if (leftAnkle != null && rightAnkle != null) {
+            val ankleCenterY = (leftAnkle.y + rightAnkle.y) / 2f
+            fullBodyHeight = abs(headPoint.y - ankleCenterY)
+        } else if (leftAnkle != null) {
+            fullBodyHeight = abs(headPoint.y - leftAnkle.y)
+        } else if (rightAnkle != null) {
+            fullBodyHeight = abs(headPoint.y - rightAnkle.y)
+        }
+
+        // Сохраняем базовую высоту человека при первой возможности
+        if (!isBasePersonHeightSet && fullBodyHeight > 0) {
+            // Устанавливаем базовую высоту на основе среднего размера человека в кадре
+            personHeightHistory.add(fullBodyHeight)
+            if (personHeightHistory.size >= 5) {
+                basePersonHeight = personHeightHistory.average().toFloat()
+                isBasePersonHeightSet = true
+                stableScale = 0.8f
+                Log.d(TAG, "Base person height set: $basePersonHeight")
+            }
+        }
+
+        if (isBasePersonHeightSet && basePersonHeight > 0) {
+            val heightRatio = fullBodyHeight / basePersonHeight
+            val targetScale = stableScale * heightRatio
+
+            // Ограничиваем масштаб
+            val clampedScale = targetScale.coerceIn(minScale, maxScale)
+
+            // Плавно изменяем масштаб
+            bodyScale = lerp(bodyScale, clampedScale, scaleSmoothingFactor)
+
+            // Также плавно обновляем стабильный масштаб
+            stableScale = lerp(stableScale, clampedScale, scaleSmoothingFactor * 0.5f)
+
+            Log.d(TAG, "Scale: ratio=$heightRatio, target=$targetScale, clamped=$clampedScale, current=$bodyScale")
+        } else {
+            val targetScale = (imageHeight * desiredFillRatio / headToShoulderDistance) * (10f / 3f)
+            val clampedScale = targetScale.coerceIn(minScale, maxScale)
+            bodyScale = lerp(bodyScale, clampedScale, scaleSmoothingFactor)
+        }
+
+        isModelVisible = true
     }
 
     fun hideModel() {
