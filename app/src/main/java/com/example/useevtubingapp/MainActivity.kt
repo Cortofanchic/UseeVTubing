@@ -65,6 +65,8 @@ class MainActivity : ComponentActivity() {
             Utils.init()
             System.loadLibrary("native-lib")
         }
+        private const val PREFS_NAME = "usee_app_prefs"
+        private const val KEY_AVATAR_PATH = "avatar_path"
     }
 
     var uiStateSaved: String? = null
@@ -99,6 +101,7 @@ class MainActivity : ComponentActivity() {
     var shouldUseMicrophone: MutableState<Boolean> = mutableStateOf(false)
     var poseResults = mutableStateOf(null as Pose?)
     var faceResults = mutableStateOf(null as Face?)
+
     // Ланчер для нескольких разрешений
     private val requestPermissionLauncherForArray = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -112,17 +115,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Ланчер для Android 11+ (MANAGE_EXTERNAL_STORAGE)
-    private val requestManageStorageLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            shouldWork.value = Environment.isExternalStorageManager()
-            if (!shouldWork.value) {
-                showPermissionDialog()
-            }
-        }
-    }
+//    // Ланчер для Android 11+ (MANAGE_EXTERNAL_STORAGE)
+//    private val requestManageStorageLauncher = registerForActivityResult(
+//        ActivityResultContracts.StartActivityForResult()
+//    ) {
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+//            shouldWork.value = Environment.isExternalStorageManager()
+//            if (!shouldWork.value) {
+//                showPermissionDialog()
+//            }
+//        }
+//    }
 
     private val requestPermissionLauncherCamera = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -145,28 +148,43 @@ class MainActivity : ComponentActivity() {
 
     fun loadAvatar(avatarName: String) {
         uiStateSaved = avatarName
+
+        // Сохраняем путь в SharedPreferences
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_AVATAR_PATH, avatarName).apply()
     }
 
     fun getAvatar(): String? {
+        if (uiStateSaved == null) {
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val savedPath = prefs.getString(KEY_AVATAR_PATH, null)
+
+            if (savedPath != null && File(savedPath).exists()) {
+                uiStateSaved = savedPath
+                Log.d("MainActivity", "Avatar path restored from preferences: $savedPath")
+            } else {
+                if (savedPath != null) {
+                    prefs.edit().remove(KEY_AVATAR_PATH).apply()
+                    Log.d("MainActivity", "Avatar file not found, cleared preferences")
+                }
+            }
+        }
         return uiStateSaved
     }
 
-    fun handleImageCapture(uri: Uri) {
-        Log.i("Usee", "Image captured: $uri")
-        shouldShowPhoto.value = true
-    }
+//    fun handleImageCapture(uri: Uri) {
+//        Log.i("Usee", "Image captured: $uri")
+//        shouldShowPhoto.value = true
+//    }
 
-    fun onImageCaptured(
-        context: Context,
-        directory: File,
-        photo: File,
-        executor: Executor,
-        filenameFormat: String
-    ) {
-        val uri = Uri.fromFile(photo)
-        processUri(uri, context)
-        handleImageCapture(uri)
-    }
+//    fun onImageCaptured(
+//        context: Context,
+//        photo: File
+//    ) {
+//        val uri = Uri.fromFile(photo)
+//        processUri(uri, context)
+//        handleImageCapture(uri)
+//    }
 
     fun findOutputDirectory(): File {
         val mediaDir = externalMediaDirs.firstOrNull()?.let {
@@ -261,42 +279,54 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun processUri(uri: Uri, context: Context) {
+//    fun processUri(uri: Uri, context: Context) {
+//        try {
+//            val image = InputImage.fromFilePath(context, uri)
+//            poseDetector.process(image)
+//                .addOnSuccessListener { pose ->
+//                    poseResults.value = pose
+//                }
+//                .addOnFailureListener { e ->
+//                    poseResults.value = null
+//                }
+//            faceDetector.process(image)
+//                .addOnSuccessListener { faces ->
+//                    if (faces.isNotEmpty()) {
+//                        faceResults.value = faces[0]
+//                    }
+//                }
+//                .addOnFailureListener { e ->
+//                    Log.e("FaceDetection", "Ошибка", e)
+//                }
+//        } catch (e: IOException) {
+//            poseResults.value = null
+//            Toast.makeText(context, "$e", Toast.LENGTH_LONG).show()
+//        }
+//    }
+
+    fun deleteAvatarFile(file: File): Boolean {
+        if (!file.exists()) {
+            clearAvatarPath()
+            return true
+        }
         try {
-            val image = InputImage.fromFilePath(context, uri)
-            poseDetector.process(image)
-                .addOnSuccessListener { pose ->
-                    poseResults.value = pose
-                }
-                .addOnFailureListener { e ->
-                    poseResults.value = null
-                }
-            faceDetector.process(image)
-                .addOnSuccessListener { faces ->
-                    if (faces.isNotEmpty()) {
-                        faceResults.value = faces[0]
-                    }
-                }
-                .addOnFailureListener { e ->
-                    Log.e("FaceDetection", "Ошибка", e)
-                }
-        } catch (e: IOException) {
-            poseResults.value = null
-            Toast.makeText(context, "$e", Toast.LENGTH_LONG).show()
+            val deleted = file.delete()
+            if (deleted) {
+                clearAvatarPath()
+                Log.d("MainActivity", "Avatar file and path deleted")
+            }
+            return deleted
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Exception while deleting file $e")
+            return false
         }
     }
 
-    fun deleteFile(file: File): Boolean {
-        if (!file.exists()) {
-            return true
-        }
-        try {
-            file.delete()
-            return true
-        } catch (e: Exception){
-            Log.e("Usee", "Exception while deleting file $e")
-            return false
-        }
+    fun clearAvatarPath() {
+        uiStateSaved = null
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().remove(KEY_AVATAR_PATH).apply()
+        Log.d("MainActivity", "Avatar path cleared")
     }
 
     private fun scaleBitmapForProcessing(bitmap: Bitmap): Bitmap {
@@ -315,40 +345,40 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun processFrameForPoseDetection(bitmap: Bitmap, context: Context) {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastProcessedTime < frameProcessingInterval) {
-            return
-        }
-        lastProcessedTime = currentTime
-
-        try {
-            val scaledBitmap = scaleBitmapForProcessing(bitmap)
-            val image = InputImage.fromBitmap(scaledBitmap, 0)
-
-            poseDetector.process(image)
-                .addOnSuccessListener { results ->
-                    poseResults.value = results
-                }
-                .addOnFailureListener {
-                    poseResults.value = null
-                }
-            faceDetector.process(image)
-                .addOnSuccessListener { faces ->
-                    if (faces.isNotEmpty()) {
-                        faceResults.value = faces[0]
-                    }
-                }
-                .addOnFailureListener { e ->
-                    Log.e("FaceDetection", "Ошибка", e)
-                }
-
-        } catch (e: Exception) {
-            Log.e("Usee", "Error processing frame", e)
-            poseResults.value = null
-            faceResults.value = null
-        }
-    }
+//    fun processFrameForPoseDetection(bitmap: Bitmap, context: Context) {
+//        val currentTime = System.currentTimeMillis()
+//        if (currentTime - lastProcessedTime < frameProcessingInterval) {
+//            return
+//        }
+//        lastProcessedTime = currentTime
+//
+//        try {
+//            val scaledBitmap = scaleBitmapForProcessing(bitmap)
+//            val image = InputImage.fromBitmap(scaledBitmap, 0)
+//
+//            poseDetector.process(image)
+//                .addOnSuccessListener { results ->
+//                    poseResults.value = results
+//                }
+//                .addOnFailureListener {
+//                    poseResults.value = null
+//                }
+//            faceDetector.process(image)
+//                .addOnSuccessListener { faces ->
+//                    if (faces.isNotEmpty()) {
+//                        faceResults.value = faces[0]
+//                    }
+//                }
+//                .addOnFailureListener { e ->
+//                    Log.e("FaceDetection", "Ошибка", e)
+//                }
+//
+//        } catch (e: Exception) {
+//            Log.e("Usee", "Error processing frame", e)
+//            poseResults.value = null
+//            faceResults.value = null
+//        }
+//    }
 
     fun applyPose(renderer: ModelRenderer, width: Float, height: Float){
         if (renderer.isReady()) {
@@ -370,36 +400,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun changeOutputView(previewView: PreviewView, context: Context): PreviewView {
-        try {
-            if (previewView.width > 0 && previewView.height > 0) {
-
-                val bitmap = Bitmap.createBitmap(
-                    previewView.width,
-                    previewView.height,
-                    Bitmap.Config.ARGB_8888
-                )
-                val canvas = Canvas(bitmap)
-                previewView.draw(canvas)
-
-                val tempFile =
-                    File(context.cacheDir, "preview_usee_${System.currentTimeMillis()}.jpg")
-                FileOutputStream(tempFile).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-                }
-
-                bitmap.recycle()
-                val uri = Uri.fromFile(tempFile)
-                processUri(uri, context)
-            }
-        } catch (e: Exception) {
-            Log.e("Usee", "Error converting PreviewView to Bitmap", e)
-        }
-        return previewView
-    }
+//    fun changeOutputView(previewView: PreviewView, context: Context): PreviewView {
+//        try {
+//            if (previewView.width > 0 && previewView.height > 0) {
+//
+//                val bitmap = Bitmap.createBitmap(
+//                    previewView.width,
+//                    previewView.height,
+//                    Bitmap.Config.ARGB_8888
+//                )
+//                val canvas = Canvas(bitmap)
+//                previewView.draw(canvas)
+//
+//                val tempFile =
+//                    File(context.cacheDir, "preview_usee_${System.currentTimeMillis()}.jpg")
+//                FileOutputStream(tempFile).use { out ->
+//                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+//                }
+//
+//                bitmap.recycle()
+//                val uri = Uri.fromFile(tempFile)
+//                processUri(uri, context)
+//            }
+//        } catch (e: Exception) {
+//            Log.e("Usee", "Error converting PreviewView to Bitmap", e)
+//        }
+//        return previewView
+//    }
 
     // createFilePath
-    fun createFilePath(inputPath: String): String {
+    fun createFilePath(inputPath: String, context: Context): String {
         val appDir = File(filesDir, "models")
 
         if (!appDir.exists()) {
@@ -582,6 +612,7 @@ class MainActivity : ComponentActivity() {
                     CameraScreen(mainActivity)
                     isShowBottomBar.value = true
                 }
-            })
+            }
+        )
     }
 }

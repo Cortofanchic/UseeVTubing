@@ -39,7 +39,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.useevtubingapp.MainActivity
 import com.example.useevtubingapp.ui.theme.blueDark7
 import com.example.useevtubingapp.ModelRenderer
-import com.google.android.filament.utils.radians
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,7 +77,7 @@ class UIViewModel : ViewModel() {
         _uiState.update { it.copy(isUploading = true) }
         val file = createFileFromContentUri(context, uri)
         if (checkToVRM(file)) {
-            val file_glb_path = activity.createFilePath(file.absolutePath)
+            val file_glb_path = activity.createFilePath(file.absolutePath, context)
             val file_glb = activity.convertVRMtoGLBcpp(file.absolutePath, file_glb_path)
             if (file_glb != file.absolutePath) {
                 activity.loadAvatar(file_glb)
@@ -89,6 +88,7 @@ class UIViewModel : ViewModel() {
         } else {
             Toast.makeText(context, "Загружен файл не VRM формата", Toast.LENGTH_LONG).show()
         }
+        file.delete()
         _uiState.update { it.copy(isUploading = false) }
     }
 
@@ -169,9 +169,10 @@ fun copyStreamToFile(inputStream: InputStream, outputFile: File) {
 
 fun deleteAvatar(avatar: String, activity: MainActivity) : Boolean{
     try {
-        activity.deleteFile(File(avatar))
+        activity.deleteAvatarFile(File(avatar))
         return true
     } catch (e: Exception){
+        Log.e("CharacterScreen", "Exception $e")
         return false
     }
 }
@@ -250,64 +251,81 @@ fun CharacterScreen(mainActivity: MainActivity) {
             ){
                 uiState.image?.let{
                     Text(
-                        modifier= Modifier.size(200.dp, 50.dp)
-                            .padding(10.dp),
+                        modifier= Modifier.size(200.dp, 50.dp),
                         text="Модель загружена"
                     )
                 } ?: run {
                     Text(
-                        modifier= Modifier.size(200.dp, 50.dp)
-                            .padding(10.dp),
+                        modifier= Modifier.size(200.dp, 50.dp),
                         text="Загрузите модель .vrm"
                     )
                 }
-
-                OutlinedButton(
-                    onClick = {
-                        if (!uiState.isUploading) {
-                            singleImagePickerLauncher.launch("*/*")
-                        } else {
-                            Toast.makeText(context, "Идет загрузка, ожидайте", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    modifier= Modifier.size(50.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    border = BorderStroke(0.dp, color=Color(0x00FFFFFF)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor =  blueDark7)
-                ) {
-                    Icon(
-                        Icons.Filled.Save,
-                        contentDescription = "load new avatar",
-                        tint=blueDark7,
-                        modifier = Modifier.size(50.dp)
-                    )
+                if (uiState.image == null) {
+                    OutlinedButton(
+                        onClick = {
+                            if (!uiState.isUploading) {
+                                singleImagePickerLauncher.launch("*/*")
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Идет загрузка, ожидайте",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        },
+                        modifier = Modifier.size(50.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        border = BorderStroke(0.dp, color = Color(0x00FFFFFF)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = blueDark7)
+                    ) {
+                        Icon(
+                            Icons.Filled.Save,
+                            contentDescription = "load new avatar",
+                            tint = blueDark7,
+                            modifier = Modifier.size(50.dp)
+                        )
+                    }
                 }
 
-                OutlinedButton(
-                    onClick = {
-                        val file = uiState.image
-                        viewModel.deleteAvatarData() // очищает uiState.image
-                        file?.let {
-                            if (deleteAvatar(file, mainActivity)){
-                                Toast.makeText(context, "Файл модели успешно удалён", Toast.LENGTH_LONG).show()
-                            } else {
-                                Toast.makeText(context, "Файл модели не удалён из-за ошибки", Toast.LENGTH_LONG).show()
+                if (uiState.image != null) {
+                    OutlinedButton(
+                        onClick = {
+                            val file = uiState.image
+                            viewModel.deleteAvatarData()
+                            file?.let {
+                                if (deleteAvatar(file, mainActivity)) {
+                                    Toast.makeText(
+                                        context,
+                                        "Файл модели успешно удалён",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Файл модели не удалён из-за ошибки",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            } ?: run {
+                                Toast.makeText(
+                                    context,
+                                    "Файл модели не загружен",
+                                    Toast.LENGTH_LONG
+                                ).show()
                             }
-                        } ?: run {
-                            Toast.makeText(context, "Файл модели не загружен", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    modifier= Modifier.size(50.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    border = BorderStroke(0.dp, color=Color(0x00FFFFFF)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor =  blueDark7)
-                ) {
-                    Icon(
-                        Icons.Filled.DeleteForever ,
-                        contentDescription = "delete avatar",
-                        tint=blueDark7,
-                        modifier = Modifier.size(50.dp)
-                    )
+                        },
+                        modifier = Modifier.size(50.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        border = BorderStroke(0.dp, color = Color(0x00FFFFFF)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = blueDark7)
+                    ) {
+                        Icon(
+                            Icons.Filled.DeleteForever,
+                            contentDescription = "delete avatar",
+                            tint = blueDark7,
+                            modifier = Modifier.size(50.dp)
+                        )
+                    }
                 }
             }
         }

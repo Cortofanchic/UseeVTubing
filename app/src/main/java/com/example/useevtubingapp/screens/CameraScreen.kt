@@ -662,42 +662,39 @@ private fun saveBitmapToFile(bitmap: Bitmap, context: Context): Uri? {
     }
 }
 
-private fun takePhoto(
-    mainActivity: MainActivity,
-    context: Context,
-    filenameFormat: String,
-    imageCapture: ImageCapture,
-    outputDirectory: File,
-    executor: Executor,
-    onImageCaptured: (Uri) -> Unit,
-    onError: (ImageCaptureException) -> Unit
-) {
-    val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-    val appDir = File(picturesDir, "Usee").also { if (!it.exists()) it.mkdirs() }
-    val photoFile = File(
-        appDir,
-        SimpleDateFormat(filenameFormat, Locale.US).format(System.currentTimeMillis()) + ".jpg"
-    )
-    val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-
-    imageCapture.takePicture(outputOptions, executor, object : ImageCapture.OnImageSavedCallback {
-        override fun onError(exception: ImageCaptureException) {
-            Log.e("Usee", "Take photo error:", exception)
-            onError(exception)
-        }
-        override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-            val savedUri = Uri.fromFile(photoFile)
-            onImageCaptured(savedUri)
-            mainActivity.onImageCaptured(
-                context = context,
-                filenameFormat = filenameFormat,
-                directory = outputDirectory,
-                executor = executor,
-                photo = photoFile,
-            )
-        }
-    })
-}
+//private fun takePhoto(
+//    mainActivity: MainActivity,
+//    context: Context,
+//    filenameFormat: String,
+//    imageCapture: ImageCapture,
+//    outputDirectory: File,
+//    executor: Executor,
+//    onImageCaptured: (Uri) -> Unit,
+//    onError: (ImageCaptureException) -> Unit
+//) {
+//    val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+//    val appDir = File(picturesDir, "Usee").also { if (!it.exists()) it.mkdirs() }
+//    val photoFile = File(
+//        appDir,
+//        SimpleDateFormat(filenameFormat, Locale.US).format(System.currentTimeMillis()) + ".jpg"
+//    )
+//    val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+//
+//    imageCapture.takePicture(outputOptions, executor, object : ImageCapture.OnImageSavedCallback {
+//        override fun onError(exception: ImageCaptureException) {
+//            Log.e("Usee", "Take photo error:", exception)
+//            onError(exception)
+//        }
+//        override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+//            val savedUri = Uri.fromFile(photoFile)
+//            onImageCaptured(savedUri)
+//            mainActivity.onImageCaptured(
+//                context = context,
+//                photo = photoFile,
+//            )
+//        }
+//    })
+//}
 
 private suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
     ProcessCameraProvider.getInstance(this).also { future ->
@@ -717,8 +714,8 @@ fun CameraScreen(mainActivity: MainActivity) {
     val preview = remember { Preview.Builder().build() }
     val previewView = remember { PreviewView(context) }
     val imageCapture = remember { ImageCapture.Builder().build() }
-    val outputDirectory = mainActivity.findOutputDirectory()
-    val cameraExecutor = mainActivity.cameraExecutor
+    //val outputDirectory = mainActivity.findOutputDirectory()
+    //val cameraExecutor = mainActivity.cameraExecutor
 
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
@@ -823,9 +820,6 @@ fun CameraScreen(mainActivity: MainActivity) {
     DisposableEffect(Unit) {
         onDispose {
             analysisExecutor.shutdown()
-            if (avatarFilePath != null) {
-                avatarFile?.delete()
-            }
         }
     }
 
