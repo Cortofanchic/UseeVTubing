@@ -1019,6 +1019,7 @@ fun CameraScreen(mainActivity: MainActivity) {
                 checked = lensFacing.value == CameraSelector.LENS_FACING_FRONT,
                 onCheckedChange = { isFront ->
                     lensFacing.value = if (isFront) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+                    renderer.setMirrored(isFront)
                 },
                 modifier = Modifier.size(100.dp),
                 colors = SwitchDefaults.colors(

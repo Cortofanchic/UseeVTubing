@@ -90,6 +90,8 @@ class ModelRenderer {
         "Spine"         to listOf("J_Bip_C_Spine",      "Spine")
     )
 
+    private var isMirrored = false
+
     init {
         boneNameMapping.keys.forEach { boneRotations[it] = Vector3D() }
     }
@@ -120,7 +122,7 @@ class ModelRenderer {
         recordingCallback = null
     }
 
-    //Захватить текущий кадр (вызывается в loop)
+    //Захватить текущий кадр
     fun captureCurrentFrame() {
         if (!isFrameCaptureEnabled || !isModelReady) return
 
@@ -256,6 +258,11 @@ class ModelRenderer {
         modelViewer.animator?.updateBoneMatrices()
     }
 
+    fun setMirrored(mirrored: Boolean) {
+        isMirrored = mirrored
+        if (isModelReady) applyAllTransformations()
+    }
+
     private fun setBodyTransform(rotX: Float, rotY: Float, scale: Float, posY: Float) {
         if (rootTransformInstance == 0) {
             Log.e(TAG, "setBodyTransform: rootTransformInstance == 0, cannot apply scale")
@@ -268,13 +275,17 @@ class ModelRenderer {
         val adjustedRollZ = 0f
 
         val m = eulerToMatrix(adjustedRotX, adjustedRotY, adjustedRollZ)
-        m[0] *= scale; m[1] *= scale; m[2] *= scale
+
+        // Зеркалирование по X
+        val mirrorX = if (isMirrored) -1f else 1f
+
+        m[0] *= scale * mirrorX; m[1] *= scale * mirrorX; m[2] *= scale * mirrorX
         m[4] *= scale; m[5] *= scale; m[6] *= scale
         m[8] *= scale; m[9] *= scale; m[10] *= scale
         m[12] = 0f; m[13] = posY; m[14] = 0f; m[15] = 1f
 
         tm.setTransform(rootTransformInstance, m)
-        Log.d(TAG, "setBodyTransform: scale = $scale, posY = $posY, rotX = $adjustedRotX, rotY = $adjustedRotY, rollZ = $adjustedRollZ")
+        Log.d(TAG, "setBodyTransform: scale=$scale, posY=$posY, mirrored=$isMirrored")
     }
 
     private fun eulerToMatrix(pitchDeg: Float, yawDeg: Float, rollDeg: Float): FloatArray {
