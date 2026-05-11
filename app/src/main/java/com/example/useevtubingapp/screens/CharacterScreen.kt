@@ -181,7 +181,7 @@ fun deleteAvatar(avatar: String, activity: MainActivity) : Boolean{
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CharacterScreen(mainActivity: MainActivity) {
-    val expanded = remember { mutableStateOf(false) }
+    //val expanded = remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val viewModel: UIViewModel = viewModel()
@@ -216,7 +216,7 @@ fun CharacterScreen(mainActivity: MainActivity) {
                     val file = File(uiState.image)
                     val renderer = ModelRenderer()
                     Surface(
-                        modifier = Modifier.width(200.dp).height(200.dp).border(width = 0.dp, color=blueDark7, shape= RoundedCornerShape(100.dp)),
+                        modifier = Modifier.width(200.dp).height(200.dp),
                         color = MaterialTheme.colorScheme.background
                     ) {
                         AndroidView(factory = { context ->
@@ -227,7 +227,7 @@ fun CharacterScreen(mainActivity: MainActivity) {
                                 )
                                 renderer.onSurfaceAvailable(this, mainActivity.lifecycle, file)
                                 renderer.setOnModelReadyListener {
-                                    renderer.setInitialTransform(0.2f, 180f)
+                                    renderer.setInitialTransform(1.3f)
                                     renderer.normalizeBodyTransform()
                                 }
                                 setTag(renderer)
@@ -251,12 +251,12 @@ fun CharacterScreen(mainActivity: MainActivity) {
             ){
                 uiState.image?.let{
                     Text(
-                        modifier= Modifier.size(200.dp, 50.dp),
+                        modifier= Modifier.size(200.dp, 50.dp).padding(top=10.dp),
                         text="Модель загружена"
                     )
                 } ?: run {
                     Text(
-                        modifier= Modifier.size(200.dp, 50.dp),
+                        modifier= Modifier.size(200.dp, 50.dp).padding(top=10.dp),
                         text="Загрузите модель .vrm"
                     )
                 }

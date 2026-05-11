@@ -61,9 +61,9 @@ class ModelRenderer {
     private var basePersonHeight = 0f
     private var isBasePersonHeightSet = false
     private val personHeightHistory = mutableListOf<Float>()
-    private val maxHistorySize = 10
+    //private val maxHistorySize = 10
 
-    private var frameCaptureCallback: ((Bitmap) -> Unit)? = null
+    //private var frameCaptureCallback: ((Bitmap) -> Unit)? = null
     private var isFrameCaptureEnabled = false
     private var lastCaptureTime = 0L
     private val CAPTURE_INTERVAL_MS = 33L
@@ -263,9 +263,9 @@ class ModelRenderer {
         }
         val tm = modelViewer.engine.transformManager
 
-        val adjustedRotY = if (isModelVisible) rotY + 90f else rotY
-        val adjustedRotX = if (isModelVisible) rotX + 0f else rotX
-        val adjustedRollZ = if (isModelVisible) 0f else 0f
+        val adjustedRotY = if (isModelVisible) 180f else rotY
+        val adjustedRotX = if (isModelVisible) 0f else rotX
+        val adjustedRollZ = 0f
 
         val m = eulerToMatrix(adjustedRotX, adjustedRotY, adjustedRollZ)
         m[0] *= scale; m[1] *= scale; m[2] *= scale
@@ -342,11 +342,12 @@ class ModelRenderer {
         applyAllTransformations()
     }
 
-    fun setInitialTransform(scale: Float = 0.5f, rotationY: Float = 180f) {
+    fun setInitialTransform(scale: Float = 0.5f, rotationY: Float = 180f, posY : Float = -1.8f) {
         bodyScale = scale
         stableScale = scale
         bodyRotationY = rotationY
         targetBodyRotationY = rotationY
+        bodyPositionY = posY
         isModelVisible = true
         if (isModelReady) applyAllTransformations()
     }
@@ -376,39 +377,55 @@ class ModelRenderer {
 
     private fun updateBodyParams(pose: Pose, imageWidth: Float, imageHeight: Float) {
         if (imageWidth <= 0f || imageHeight <= 0f) return
+
         val lSh  = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
         val rSh  = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
         val lHip = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
-        val rHip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
-        val nose = pose.getPoseLandmark(PoseLandmark.NOSE)
+        val lEye = pose.getPoseLandmark(PoseLandmark.LEFT_EYE)
+        val rEye = pose.getPoseLandmark(PoseLandmark.RIGHT_EYE)
 
+        // Вращение тела (Y)
         if (lSh != null && rSh != null) {
             val dx = lSh.position.x - rSh.position.x
             val dy = lSh.position.y - rSh.position.y
             targetBodyRotationY = -atan2(dy, dx) * 180f / PI.toFloat() * 0.6f
         }
+
+        // Наклон тела (X)
         if (lSh != null && lHip != null) {
             val dx = lSh.position.x - lHip.position.x
             val dy = lSh.position.y - lHip.position.y
             targetBodyRotationX = (atan2(dy, dx) * 180f / PI.toFloat() - 90f) * 0.5f
         }
 
-        // Вертикальное положение по 3D координатам глаз
-        if (isLandmarkVisible(pose, PoseLandmark.LEFT_EYE) && isLandmarkVisible(pose, PoseLandmark.RIGHT_EYE)) {
-            val lEye3D = get3D(pose, PoseLandmark.LEFT_EYE)!!
-            val rEye3D = get3D(pose, PoseLandmark.RIGHT_EYE)!!
-            val eyeCenterY = (lEye3D.third + rEye3D.third) / 2f
-            targetBodyPositionY = -eyeCenterY * bodyScale.coerceAtLeast(0.1f) * 2f / 10000
-        } else if (nose != null && lHip != null && rHip != null) {
-            val hipCenterY = (lHip.position.y + rHip.position.y) / 2f
-            val bodyHeight = abs(nose.position.y - hipCenterY)
-            targetBodyPositionY = -((1f - bodyHeight / imageHeight) * 0.5f)
+        val eyeY = when {
+            lEye != null && rEye != null -> (lEye.position.y + rEye.position.y) / 2f
+            lEye != null -> lEye.position.y
+            rEye != null -> rEye.position.y
+            else -> null
         }
 
+        if (eyeY != null) {
+            val centerY = imageHeight / 2f
+            val pixelOffset = centerY - eyeY
+
+            // Коэффициент сколько мировых единиц на пиксель
+            val pixelsToWorldUnits = 0.06f * bodyScale
+
+            targetBodyPositionY = pixelOffset * pixelsToWorldUnits
+
+            Log.d(TAG, "POS Y: eyeY=$eyeY, centerY=$centerY, " +
+                    "pixelOffset=$pixelOffset, target=$targetBodyPositionY")
+        } else {
+            targetBodyPositionY = lerp(targetBodyPositionY, 0f, 0.1f)
+        }
+        // Сглаживание
         bodyRotationY = lerp(bodyRotationY, targetBodyRotationY, smoothingFactor)
         bodyRotationX = lerp(bodyRotationX, targetBodyRotationX, smoothingFactor)
         bodyPositionY = lerp(bodyPositionY, targetBodyPositionY, smoothingFactor)
     }
+
+
 
     private fun updateRotationsFromPose(pose: Pose) {
         if (isLandmarkVisible(pose, PoseLandmark.LEFT_SHOULDER) && isLandmarkVisible(pose, PoseLandmark.LEFT_ELBOW)) {

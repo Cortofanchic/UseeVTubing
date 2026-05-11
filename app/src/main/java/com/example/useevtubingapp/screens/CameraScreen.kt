@@ -64,6 +64,9 @@ import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import androidx.compose.material.icons.filled.Adjust
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -843,7 +846,8 @@ fun CameraScreen(mainActivity: MainActivity) {
                                 renderer.onSurfaceAvailable(this, lifecycle, avatarFile)
                                 surfaceViewRef.value = this
                             }
-                        })
+                        }
+                        )
                     }
                 } else {
                     Column(modifier = Modifier.fillMaxSize()) {
