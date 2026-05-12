@@ -41,7 +41,7 @@ const vector<string> UNSUPPORTED_EXTENSIONS = {
         "VRM"
 };
 
-// ====================== 1. РАСПАРСИТЬ GLB ======================
+// РАСПАРСИТЬ GLB
 string extractJsonChunk(const vector<uint8_t>& data) {
     if (data.size() < sizeof(GLBHeader)) return "";
     size_t offset = sizeof(GLBHeader);
@@ -80,7 +80,7 @@ vector<uint8_t> extractBinChunk(const vector<uint8_t>& data) {
     return {};
 }
 
-// ====================== 2. ОБРАБОТКА JSON ======================
+// ОБРАБОТКА JSON
 string processVRMJson(const string& originalJson) {
     try {
         json gltf = json::parse(originalJson);
@@ -141,10 +141,8 @@ string processVRMJson(const string& originalJson) {
             }
         }
 
-        // === 2. Сохраняем все кости (nodes) без изменений ===
-        // Ничего не удаляем из nodes — оставляем иерархию и имена как есть
+        // Сохраняем все кости (nodes) без изменений
 
-        // === 3. Делаем отдельные skins для каждого mesh (решает проблему с несколькими мешами) ===
         if (gltf.contains("skins") && !gltf["skins"].empty() &&
             gltf.contains("meshes") && !gltf["meshes"].empty()) {
 
@@ -180,7 +178,6 @@ string processVRMJson(const string& originalJson) {
             LOGD("Created %zu skins (1 original + %zu per-mesh)", newSkins.size(), gltf["meshes"].size());
         }
 
-        // === 4. Минимальные исправления glTF ===
         if (!gltf.contains("asset")) {
             gltf["asset"] = {{"version", "2.0"}, {"generator", "VRM2GLB Converter"}};
         } else {
@@ -194,7 +191,7 @@ string processVRMJson(const string& originalJson) {
         }
 
         LOGD("Processing completed successfully.");
-        return gltf.dump(4);  // красивый вывод с отступами (для отладки)
+        return gltf.dump(4);
     }
     catch (const exception& e) {
         LOGE("JSON processing error: %s", e.what());
@@ -202,7 +199,7 @@ string processVRMJson(const string& originalJson) {
     }
 }
 
-// ====================== 3. СОБРАТЬ GLB ======================
+//СОБРАТЬ GLB
 vector<uint8_t> createGLBFile(const string& jsonStr, const vector<uint8_t>& binData) {
     vector<uint8_t> jsonBytes(jsonStr.begin(), jsonStr.end());
     while (jsonBytes.size() % 4 != 0) jsonBytes.push_back(' ');
@@ -244,7 +241,7 @@ vector<uint8_t> createGLBFile(const string& jsonStr, const vector<uint8_t>& binD
     return output;
 }
 
-// ====================== JNI ======================
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_useevtubingapp_MainActivity_convertVRMtoGLBcpp(
         JNIEnv* env,
@@ -266,7 +263,7 @@ Java_com_example_useevtubingapp_MainActivity_convertVRMtoGLBcpp(
     ifstream file(inputPath, ios::binary | ios::ate);
     if (!file.is_open()) {
         LOGE("Failed to open input file: %s", inputPath.c_str());
-        return jInputPath;  // возвращаем оригинальный путь при ошибке
+        return jInputPath;
     }
 
     size_t fileSize = file.tellg();
